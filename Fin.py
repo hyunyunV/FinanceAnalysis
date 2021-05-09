@@ -100,8 +100,8 @@ def setSGA(df):
 
 def Cut20NullfillNA(df):
     df['CountNull'] = df.isnull().sum(axis=1)
-    df = df.drop(df[ df['CountNull'] == 20 ].index)
-    df = df.drop(df[ df['CountNull'] == 23 ].index)
+    df = df.drop(df[ df['CountNull'] >= 20 ].index) # --> 여기를 20이상으로 해서 잡으면 댈 것 같은데?? 
+    #df = df.drop(df[ df['CountNull'] == 23 ].index)
     df = df.fillna(0)
     df.drop(["Unnamed: 0"],axis = 1,inplace = True)
     df.drop(df[ (df['deltaprice']==99) | (df['deltaprice']==np.inf)].index, inplace = True)
@@ -185,6 +185,86 @@ def CalPEISpoints(dfs):
         YearDflist.append(now)
     NewDf = pd.concat(YearDflist)
     return NewDf
+
+def returnspecindex(names):
+    numlist = []
+    for i in range(len(names)):
+        if "스팩" in names[i]:
+            numlist.append(i)
+    return numlist
+
+
+
+def CompuConsen(df):
+    df['CompuConsen'] = 0
+    Nowprice = df['총자산(천원)'] # 지금 주가
+    Targetprice = df['총자산(평균)(천원)'] # 목표주가 
+    for i in range(len(df)):
+        if Nowprice[i]*1.4 <= Targetprice[i]:
+            df['CompuConsen'][i] = 5
+        elif ((Nowprice[i]*1.2 <= Targetprice[i]) | (Nowprice[i]*1.4 > Targetprice[i])) :
+            df['CompuConsen'][i] = 4
+        elif ((Nowprice[i]*0.8 <= Targetprice[i]) | (Nowprice[i]*1.2 > Targetprice[i])) :
+            df['CompuConsen'][i] = 3
+        elif (Nowprice[i]*0.8 > Targetprice[i]) :
+            df['CompuConsen'][i] = 1
+        else :
+            df['CompuConsen'][i] = 0
+            
+
+
+def showTable5(df):
+    consens = df['consen_cut'].unique().sort_values()
+    listnum = [i for i in consens] *7
+    listnum.sort()
+    table5 = []
+    for i in consens:
+        df_mean = df[df['consen_cut'] == i ].mean()
+        df_std = np.sqrt(df[df['consen_cut'] == i ].var())
+        df_p20 = df[df['consen_cut'] == i ].quantile(0.2)
+        df_median = df[df['consen_cut'] == i ].median()
+        df_p80 = df[df['consen_cut'] == i ].quantile(0.8)
+        df_min = df[df['consen_cut'] == i ].min()
+        df_max = df[df['consen_cut'] == i ].max()
+        now = pd.concat([df_mean, df_std, df_p20, df_median, df_p80, df_min, df_max],axis=1)
+        table5.append(now)
+    table5 = pd.concat(table5)
+    table5.drop('consen_cut',inplace = True)
+    table5.columns = ['Mean','Std','P20','Median','P80','Min','Max']
+    table5.index = [listnum, ['RNOA','deltaSGA','deltasale','deltaATO','GNOA','deltaACC','PEIS']*5]
+    
+    return table5
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
