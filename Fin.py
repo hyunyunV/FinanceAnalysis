@@ -23,70 +23,56 @@ def Caldelta(df):
 
 def Caldeltaprice(df):
     deltalist = []
-    for i in range(len(df)-1):
-        deltalist.append( (df[i+1] - df[i]) / df[i]) 
+    for i in range(len(df)-2):
+        deltalist.append( (df[i+2] - df[i+1]) / df[i+1]) 
+    deltalist.append(0)
     deltalist.append(0)
     return deltalist
 
 def CalGM(df):
-    df['SGA'] = df["매출원가(천원)"]+df["판매비와관리비(천원)"]
-    df['deltaSGA'] = Calminus(df['SGA'])
-    # 이부분 논문 정확히 구현 불가능 교수님한테 물어보기 매출원가는 ok 영업비용, 일반관리비가 항목이 애매함
-    df['GM'] = df["매출총이익(천원)"]
-    df['deltaGM1'] = Caldelta(df['GM'])
+    df['GM1'] = df["매출총이익(천원)"] # GM 구성요소 1매출총이익 성장률
+    df['deltaGM1'] = Caldelta(df['GM1'])
     df['deltasale'] = Caldelta(df['매출액(천원)'])
-    df['deltaGM2'] = df['deltaGM1'] - df['deltasale']
+    df['deltaGM'] = df['deltaGM1'] - df['deltasale']
     return df
 
+def CalSGA(df):
+    # 이부분 논문 정확히 구현 불가능 교수님한테 물어보기 매출원가는 ok 영업비용, 일반관리비가 항목이 애매함
+    df['SGA'] = df["판매비와관리비(천원)"] # 판관비만 SGA에 해당한다 매출원가는 COGS cost of goods sold로 분류됨
+    df['SGAp'] = df['SGA'] / df['매출액(천원)']
+    df['deltaSGA'] = Calminus(df['SGAp'])   
+    
+def Calhalf(df):
+    deltalist = [0]
+    for i in range(len(df)-1):
+        deltalist.append( (df[i+1] - df[i]) / 2) 
+    return deltalist
+
 def CalGNOA(df):
-    df['GNOA'] = df['매출채권(천원)'] + df['재고자산(천원)'] - df['매입채무(천원)']
-    df['deltaGNOA'] = Caldelta(df['GNOA'])
+    df['GNOA'] = Caldelta(df['NOA'])
     return df
 
 def CalRNOA(df):
-    #df['NetAsset'] = df["총자산(천원)"]-df["현금및현금성자산(천원)"]-df["단기차입금(천원)"]-df["유동부채(천원)"]
-    # 뭔지 모름
-    df['NetAsset'] = df["보통주자본금(천원)"]+df["유동부채(천원)"]+df["비유동부채(천원)"]+df["우선주자본금(천원)"]-df["현금및현금성자산(천원)"]-df["단기차입금(천원)"]
-    df['RNOA'] = df['영업이익(천원)']/df['NetAsset']
+    df['NOA'] = df["보통주자본금(천원)"]+df["유동부채(천원)"]+df["비유동부채(천원)"]+df["우선주자본금(천원)"]-df["현금및현금성자산(천원)"]-df["단기차입금(천원)"] # 여기서 단기차입금이 아니라 단기금융상품임
+    df['AVGNOA'] = Calhalf(df['NOA'])
+    df['RNOA'] = df['영업이익(천원)']/df['AVGNOA']
     return df
 
 def CalACC(df):
-    df['NetAsset'] = df["보통주자본금(천원)"]+df["유동부채(천원)"]+df["비유동부채(천원)"]+df["우선주자본금(천원)"]-df["현금및현금성자산(천원)"]-df["단기차입금(천원)"]
-    df['deltaACC'] = ( df['영업이익(천원)'] - df['영업활동으로인한현금흐름(천원)'] ) / df['NetAsset']
+    df['deltaACC'] = ( df['영업이익(천원)'] - df['영업활동으로인한현금흐름(천원)'] ) / df['AVGNOA']
     return df
 
+def CalforATO(u,d):
+    datalist = [0]
+    for i in range(len(u)-1):
+        datalist.append( u[i+1] / d[i] )
+    return datalist
+
 def CalAto(df):
-    df['ATO'] = df['매출액(천원)'] / df['총자산(천원)']
+    df['ATO'] = CalforATO(df['매출액(천원)'] , df['총자산(천원)'])
     df['deltaATO'] = Calminus(df['ATO'])
     return df
 
-def underplus(df):
-    pointlist = []
-    under20 = df.quantile([0.2,0.8]).iloc[0]
-    upper20 = df.quantile([0.2,0.8]).iloc[1]
-    for i in range(len(df)):
-        if df.iloc[i] <= under20:
-            pointlist.append(1)
-        elif df.iloc[i] >= upper20:
-            pointlist.append(-1)
-        else :
-            pointlist.append(0)
-    pointlist = pd.DataFrame(pointlist, columns = [df.name+"PEISpoint"])
-    return pointlist
-        
-def upperplus(df):
-    pointlist = []
-    under20 = df.quantile([0.2,0.8]).iloc[0]
-    upper20 = df.quantile([0.2,0.8]).iloc[1]
-    for i in range(len(df)):
-        if df.iloc[i] <= under20:
-            pointlist.append(-1)
-        elif df.iloc[i] >= upper20:
-            pointlist.append(1)
-        else :
-            pointlist.append(0)
-    pointlist = pd.DataFrame(pointlist, columns = [df.name+"PEISpoint"])
-    return pointlist
 
 def setSGA(df):
     df['SGAdeltasale>0'] = 0
@@ -99,17 +85,19 @@ def setSGA(df):
     return df
 
 def Cut20NullfillNA(df):
+    """
+    Null값 20넘어가는거는 삭제해줄 필요가 있음 그냥 아예 데이터가 없는 구간이 뽑힌것
+    그보다 작은 NULL 값들은 모두 금융권 기업들임
+    """
     df['CountNull'] = df.isnull().sum(axis=1)
     df = df.drop(df[ df['CountNull'] >= 20 ].index) # --> 여기를 20이상으로 해서 잡으면 댈 것 같은데?? 
     #df = df.drop(df[ df['CountNull'] == 23 ].index)
     df = df.fillna(0)
-    df.drop(["Unnamed: 0"],axis = 1,inplace = True)
-    df.drop(df[ (df['deltaprice']==99) | (df['deltaprice']==np.inf)].index, inplace = True)
     return df
 
 
 def CalPEIS(df):
-    df['valPEIS'] = df['GNOAPEISpoint'] + df['deltaATOPEISpoint']+ df['deltaGM2PEISpoint']+ df['deltaACCPEISpoint']+ df['RNOAPEISpoint']+ df['SGAdeltasale>0PEISpoint']+ df['SGAdeltasale<0PEISpoint']
+    df['valPEIS'] = df['GNOAPEISpoint'] + df['deltaATOPEISpoint']+ df['deltaGMPEISpoint']+ df['deltaACCPEISpoint']+ df['RNOAPEISpoint']+ df['SGAdeltasale>0PEISpoint']+ df['SGAdeltasale<0PEISpoint']
     return df
 
 def yearbaseDFs(df, years = [2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020] ):
@@ -117,7 +105,6 @@ def yearbaseDFs(df, years = [2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2
     for i in years:
         now = df[ df['회계년'] == i ]
         dfs.append(now)
-    dfs = dfs[1:]
     return dfs
 
 def MakeLookGood(df, years = [2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021]):
@@ -140,18 +127,24 @@ def MakeOnetable(df, needstrs,inputnames):
     return Onetable
 
 def CompuMoreData(df):
+    """
+    기업별로 각각 PEIS 정보를 계산하기 때문에 섞일 수가 없는 듯 PEIS점수는 ㅇㅇ 
+    deltaprice, 컨센 그런게 좀 걸리긴하겠네
+    """
     ComName = set(df['Name'])
     df = df.set_index(["Name","회계년"])
     Comlist = []
     for name in ComName:
         nowcom = df.loc[(name,slice(None)), :]
-        CalACC(nowcom)
         CalRNOA(nowcom)
         CalGNOA(nowcom)
+        CalACC(nowcom)
         CalGM(nowcom)
         CalAto(nowcom)
+        CalSGA(nowcom)
         setSGA(nowcom)
         Comlist.append(nowcom)
+        nowcom
     ComputeMoreData = pd.concat(Comlist).reset_index()
     return ComputeMoreData
 
@@ -170,20 +163,98 @@ def Upper20Port(dfs, ColName):
         ProfitList.append(profit)
     return ProfitList
 
+def underplus(df):
+    pointlist = []
+    under20 = df.quantile([0.2,0.8]).iloc[0]
+    upper20 = df.quantile([0.2,0.8]).iloc[1]
+       
+    for i in range(len(df)):
+        if df.iloc[i] <= under20:
+            pointlist.append(1)
+        elif df.iloc[i] >= upper20:
+            pointlist.append(-1)
+        else :
+            pointlist.append(0)
+    pointlist = pd.DataFrame(pointlist, columns = [df.name+"PEISpoint"])
+    return pointlist
+        
+def upperplus(df):
+    pointlist = []
+    under20 = df.quantile([0.2,0.8]).iloc[0]
+    upper20 = df.quantile([0.2,0.8]).iloc[1]
+       
+    for i in range(len(df)):
+        if df.iloc[i] <= under20:
+            pointlist.append(-1)
+        elif df.iloc[i] >= upper20:
+            pointlist.append(1)
+        else :
+            pointlist.append(0)
+    pointlist = pd.DataFrame(pointlist, columns = [df.name+"PEISpoint"])
+    return pointlist
+
+
+def underplus_SGA(df):
+    pointlist = []
+    under20 = np.percentile(df.unique(),20)
+    upper20 = np.percentile(df.unique(),80)
+        
+    for i in range(len(df)):
+        if df.iloc[i] <= under20:
+            if df.iloc[i] == 0:
+                pointlist.append(0)
+            else:
+                pointlist.append(1)
+        elif df.iloc[i] >= upper20:
+            if df.iloc[i] == 0:
+                pointlist.append(0)
+            else:
+                pointlist.append(-1)
+        else :
+            pointlist.append(0)
+    pointlist = pd.DataFrame(pointlist, columns = [df.name+"PEISpoint"])
+    return pointlist
+
+        
+def upperplus_SGA(df):
+    pointlist = []
+    under20 = np.percentile(df.unique(),20)
+    upper20 = np.percentile(df.unique(),80)
+       
+    for i in range(len(df)):
+        if df.iloc[i] <= under20:
+            if df.iloc[i] == 0:
+                pointlist.append(0)
+            else:
+                pointlist.append(-1)
+        elif df.iloc[i] >= upper20:
+            if df.iloc[i] == 0:
+                pointlist.append(0)
+            else:
+                pointlist.append(1)
+        else :
+            pointlist.append(0)
+    pointlist = pd.DataFrame(pointlist, columns = [df.name+"PEISpoint"])
+    return pointlist
+
 def CalPEISpoints(dfs):
     YearDflist = []
     for df in dfs:
         df = df.reset_index()
+        dfRNOA = underplus(df['RNOA'])
         dfGNOA = underplus(df['GNOA'])
         dfATO = upperplus(df['deltaATO'])
-        dfGM = upperplus(df['deltaGM2'])
+        dfGM = upperplus(df['deltaGM'])
         dfACC = underplus(df['deltaACC'])
-        dfRNOA = underplus(df['RNOA'])
-        dfSGAupper = underplus(df['SGAdeltasale>0'])
-        dfSGAunder = upperplus(df['SGAdeltasale<0'])
+        dfSGAupper = underplus_SGA(df['SGAdeltasale>0'])
+        dfSGAunder = upperplus_SGA(df['SGAdeltasale<0'])
         now = pd.concat([df,dfGNOA, dfATO, dfGM, dfACC, dfRNOA, dfSGAupper, dfSGAunder],axis=1)
         YearDflist.append(now)
     NewDf = pd.concat(YearDflist)
+    NewDf.drop(['index'], axis = 1, inplace = True)
+    NewDf.reset_index(inplace = True)
+    NewDf.drop(['index'], axis = 1, inplace = True)
+    
     return NewDf
 
 def returnspecindex(names):
@@ -193,28 +264,26 @@ def returnspecindex(names):
             numlist.append(i)
     return numlist
 
-
-
 def CompuConsen(df):
     df['CompuConsen'] = 0
-    Nowprice = df['총자산(천원)'] # 지금 주가
-    Targetprice = df['총자산(평균)(천원)'] # 목표주가 
-    for i in range(len(df)):
+    Nowprice = df['ADJprice'] # 지금 주가
+    Targetprice = df['ADJprice'] # 목표주가 
+    for j in range(len(df) - 1):
+        i = j+1
         if Nowprice[i]*1.4 <= Targetprice[i]:
-            df['CompuConsen'][i] = 5
+            df['CompuConsen'][j] = 5
         elif ((Nowprice[i]*1.2 <= Targetprice[i]) | (Nowprice[i]*1.4 > Targetprice[i])) :
-            df['CompuConsen'][i] = 4
+            df['CompuConsen'][j] = 4
         elif ((Nowprice[i]*0.8 <= Targetprice[i]) | (Nowprice[i]*1.2 > Targetprice[i])) :
-            df['CompuConsen'][i] = 3
+            df['CompuConsen'][j] = 3
         elif (Nowprice[i]*0.8 > Targetprice[i]) :
-            df['CompuConsen'][i] = 1
+            df['CompuConsen'][j] = 1
         else :
-            df['CompuConsen'][i] = 0
-            
-
+            df['CompuConsen'][j] = 0
+    df['CompuConsen'][j+1] = 0
 
 def showTable5(df):
-    consens = df['consen_cut'].unique().sort_values()
+    consens = df['consen_cut'].sort_values().unique()
     listnum = [i for i in consens] *7
     listnum.sort()
     table5 = []
@@ -235,10 +304,16 @@ def showTable5(df):
     
     return table5
 
+def dropdata(df, colname, droplist):
+    for i in droplist:
+        dropindex = df[df[colname] == i].index
+        df.drop(dropindex, inplace = True)
+    df.reset_index(inplace = True)
+    df.drop(['index'], axis = 1, inplace = True)
 
-
-
-
+def dropdelist(df,delistcom):
+    for i in delistcom:
+        df.drop( df[df['Name'] == i].index, inplace =True )
 
 
 
