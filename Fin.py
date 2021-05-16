@@ -23,9 +23,8 @@ def Caldelta(df):
 
 def Caldeltaprice(df):
     deltalist = []
-    for i in range(len(df)-2):
-        deltalist.append( (df[i+2] - df[i+1]) / df[i+1]) 
-    deltalist.append(0)
+    for i in range(1,len(df)):
+        deltalist.append( (df[i+1] - df[i]) / df[i]) 
     deltalist.append(0)
     return deltalist
 
@@ -45,7 +44,7 @@ def CalSGA(df):
 def Calhalf(df):
     deltalist = [0]
     for i in range(len(df)-1):
-        deltalist.append( (df[i+1] - df[i]) / 2) 
+        deltalist.append( (df[i+1] + df[i]) / 2) 
     return deltalist
 
 def CalGNOA(df):
@@ -53,7 +52,7 @@ def CalGNOA(df):
     return df
 
 def CalRNOA(df):
-    df['NOA'] = df["보통주자본금(천원)"]+df["유동부채(천원)"]+df["비유동부채(천원)"]+df["우선주자본금(천원)"]-df["현금및현금성자산(천원)"]-df["단기차입금(천원)"] # 여기서 단기차입금이 아니라 단기금융상품임
+    df['NOA'] = df["보통주자본금(천원)"]+df["총부채(천원)"]+df["우선주자본금(천원)"]-df["현금및현금성자산(천원)"]-df["단기금융자산(천원)"]-df["단기매매금융자산(*)(천원)"] # 여기서 단기차입금이 아니라 단기금융상품임
     df['AVGNOA'] = Calhalf(df['NOA'])
     df['RNOA'] = df['영업이익(천원)']/df['AVGNOA']
     return df
@@ -72,6 +71,16 @@ def CalAto(df):
     df['ATO'] = CalforATO(df['매출액(천원)'] , df['총자산(천원)'])
     df['deltaATO'] = Calminus(df['ATO'])
     return df
+
+def Earning(df):
+    deltalist = []
+    for i in range(len(df)-1):
+        if df.iloc[i+1] > df.iloc[i]:
+            deltalist.append(1)
+        else:
+            deltalist.append(0)
+    deltalist.append(0)
+    return deltalist
 
 
 def setSGA(df):
@@ -107,6 +116,25 @@ def yearbaseDFs(df, years = [2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2
         dfs.append(now)
     return dfs
 
+def namebaseDFs(df):
+    dfs = []
+    for i in range(int(len(df)/14)):
+        j = i*14
+        now = df.iloc[j:j+14,:]
+        now = now.reset_index()
+        now.drop('index',axis = 1, inplace = True)
+        dfs.append(now)
+    return dfs
+
+
+def concatPEIS_STOCK(PEISdfs,namesymbol,Onetable):
+    for i in range(int(len(namesymbol)/8)):
+        for j in range(int(len(PEISdfs))):
+            if( (namesymbol[i*8][0]==PEISdfs[j]['Name'][0]) & (namesymbol[i*8][1] == PEISdfs[j]['Symbol'][0]) ):    
+                PEISdfs[j] = pd.concat([PEISdfs[j], Onetable.iloc[i*14:i*14+14,:].reset_index(drop=True)], axis=1)
+                break ;
+    return PEISdfs
+
 def MakeLookGood(df, years = [2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021]):
     df = df.set_index(["Symbol Name", "Item Name "])
     df.drop('Symbol',axis=1,inplace=True)
@@ -122,6 +150,8 @@ def MakeOnetable(df, needstrs,inputnames):
     lines = []
     for needs, names in zip(needstrs,inputnames):
         line = MakeOneLine(df, needs, names)
+        line.drop(0,inplace = True)
+        line[len(line)+1] = 0
         lines.append(line)
     Onetable = pd.concat(lines,axis=1)
     return Onetable
@@ -143,7 +173,9 @@ def CompuMoreData(df):
         CalAto(nowcom)
         CalSGA(nowcom)
         setSGA(nowcom)
+        nowcom['deltaearn'] = Earning(nowcom['영업이익(천원)'])
         Comlist.append(nowcom)
+        
         nowcom
     ComputeMoreData = pd.concat(Comlist).reset_index()
     return ComputeMoreData
@@ -266,23 +298,36 @@ def returnspecindex(names):
 
 def CompuConsen(df):
     df['CompuConsen'] = 0
-    Nowprice = df['ADJprice'] # 지금 주가
-    Targetprice = df['ADJprice'] # 목표주가 
-    for j in range(len(df) - 1):
-        i = j+1
-        if Nowprice[i]*1.4 <= Targetprice[i]:
-            df['CompuConsen'][j] = 5
-        elif ((Nowprice[i]*1.2 <= Targetprice[i]) | (Nowprice[i]*1.4 > Targetprice[i])) :
-            df['CompuConsen'][j] = 4
-        elif ((Nowprice[i]*0.8 <= Targetprice[i]) | (Nowprice[i]*1.2 > Targetprice[i])) :
-            df['CompuConsen'][j] = 3
+    Nowprice = df['Endprice'] # 지금 주가
+    Targetprice = df['Targetprice'] # 목표주가 
+    for i in range(len(df)):
+        if (Targetprice[i] == -1) :
+            df['CompuConsen'][i] = 0
+        elif Nowprice[i]*1.4 <= Targetprice[i]:
+            df['CompuConsen'][i] = 4
+        elif ((Nowprice[i]*1.2 <= Targetprice[i]) & (Nowprice[i]*1.4 > Targetprice[i])) :
+            df['CompuConsen'][i] = 3
+        elif ((Nowprice[i]*0.8 <= Targetprice[i]) & (Nowprice[i]*1.2 > Targetprice[i])) :
+            df['CompuConsen'][i] = 2
         elif (Nowprice[i]*0.8 > Targetprice[i]) :
-            df['CompuConsen'][j] = 1
+            df['CompuConsen'][i] = 1
         else :
-            df['CompuConsen'][j] = 0
-    df['CompuConsen'][j+1] = 0
+            df['CompuConsen'][i] = 0
 
 def showTable5(df):
+    df_mean = df.mean()
+    df_std = np.sqrt(df.var())
+    df_p20 = df.quantile(0.2)
+    df_median = df.median()
+    df_p80 = df.quantile(0.8)
+    df_min = df.min()
+    df_max = df.max()
+    now = pd.concat([df_mean, df_std, df_p20, df_median, df_p80, df_min, df_max],axis=1)
+    now.columns = ['Mean','Std','P20','Median','P80','Min','Max']
+    Alldata = now.drop('consen_cut')
+    print("Alldata count : ", len(df))
+    df.set_index('consen_cut')
+    
     consens = df['consen_cut'].sort_values().unique()
     listnum = [i for i in consens] *7
     listnum.sort()
@@ -296,13 +341,15 @@ def showTable5(df):
         df_min = df[df['consen_cut'] == i ].min()
         df_max = df[df['consen_cut'] == i ].max()
         now = pd.concat([df_mean, df_std, df_p20, df_median, df_p80, df_min, df_max],axis=1)
+        print("consen : " +str(i) + " count : "  + str( df[df['consen_cut'] == i]['RNOA'].count() ))
         table5.append(now)
     table5 = pd.concat(table5)
     table5.drop('consen_cut',inplace = True)
     table5.columns = ['Mean','Std','P20','Median','P80','Min','Max']
     table5.index = [listnum, ['RNOA','deltaSGA','deltasale','deltaATO','GNOA','deltaACC','PEIS']*5]
     
-    return table5
+    return Alldata, table5
+    
 
 def dropdata(df, colname, droplist):
     for i in droplist:
