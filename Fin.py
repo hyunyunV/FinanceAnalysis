@@ -161,11 +161,12 @@ def CompuMoreData(df):
     기업별로 각각 PEIS 정보를 계산하기 때문에 섞일 수가 없는 듯 PEIS점수는 ㅇㅇ 
     deltaprice, 컨센 그런게 좀 걸리긴하겠네
     """
-    ComName = set(df['Name'])
-    df = df.set_index(["Name","회계년"])
+    
+    df = df.set_index(['Symbol','Name'])
+    indexs = df.index.unique()
     Comlist = []
-    for name in ComName:
-        nowcom = df.loc[(name,slice(None)), :]
+    for ticker, name in indexs:
+        nowcom = df.loc[(ticker,name), :]
         CalRNOA(nowcom)
         CalGNOA(nowcom)
         CalACC(nowcom)
@@ -301,8 +302,9 @@ def CompuConsen(df):
     Nowprice = df['Endprice'] # 지금 주가
     Targetprice = df['Targetprice'] # 목표주가 
     for i in range(len(df)):
-        if (Targetprice[i] == -1) :
+        if (Targetprice[i] == 0) :
             df['CompuConsen'][i] = 0
+            continue 
         elif Nowprice[i]*1.4 <= Targetprice[i]:
             df['CompuConsen'][i] = 4
         elif ((Nowprice[i]*1.2 <= Targetprice[i]) & (Nowprice[i]*1.4 > Targetprice[i])) :
